@@ -1,6 +1,6 @@
 "use strict";
 /* ============================================================================
-   TreeViz – standalone tree / metadata / population-frequency viewer & editor
+   PopSeqViz2 – standalone tree / metadata / population-frequency viewer & editor
    ========================================================================== */
 const $=id=>document.getElementById(id);
 const FONT="Segoe UI, Helvetica, Arial, sans-serif";
@@ -8,12 +8,14 @@ const PAL=["#636efa","#ef553b","#00cc96","#ab63fa","#ffa15a","#19d3f3","#ff6692"
  "#2e91e5","#e15f99","#1ca71c","#fb0d0d","#da16ff","#222a2a","#b68100","#750d86","#eb663b","#511cfb","#00a08b","#fb00d1","#fc0080","#b2828d",
  "#6c7c32","#778aae","#862a16","#a777f1","#620042","#1616a7","#da60ca","#6c4516","#0d2a63","#af0038"];
 const GRADS={
-  viridis:[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]],
-  plasma:[[13,8,135],[126,3,168],[204,71,120],[248,149,64],[240,249,33]],
-  blues:[[239,246,255],[147,197,253],[59,130,246],[29,78,216],[23,37,84]],
-  reds:[[255,245,240],[252,187,161],[251,106,74],[203,24,29],[103,0,13]],
-  greens:[[240,253,244],[134,239,172],[34,197,94],[21,128,61],[5,46,22]],
-  rdylbu:[[49,54,149],[116,173,209],[255,255,191],[244,109,67],[165,0,38]]};
+  viridis:[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[196,206,30]],
+  plasma:[[13,8,135],[126,3,168],[204,71,120],[248,149,64],[222,190,20]],
+  turbo:[[48,18,59],[40,120,240],[30,200,160],[150,230,40],[250,180,30],[230,80,20],[122,4,3]],
+  blues:[[125,175,230],[66,133,244],[29,78,216],[30,58,138],[10,20,70]],
+  reds:[[252,146,114],[239,59,44],[203,24,29],[153,0,13],[80,0,10]],
+  greens:[[116,196,118],[49,163,84],[0,128,60],[0,90,40],[0,50,20]],
+  orpu:[[253,141,60],[217,72,1],[166,54,3],[106,81,163],[63,0,125]],
+  rdylbu:[[49,54,149],[69,117,180],[120,160,60],[230,140,30],[215,48,39],[165,0,38]]};
 function gradAt(name,t){const st=GRADS[name]||GRADS.viridis;if(!isFinite(t))return"#d1d5db";t=Math.max(0,Math.min(.99999,t))*(st.length-1);const i=Math.floor(t),f=t-i;
   return"rgb("+st[i].map((x,j)=>Math.round(x+(st[i+1][j]-x)*f)).join(",")+")"}
 function textOn(c){const m=c.match(/\d+/g);if(!m)return"#111";const[r,g,b]=m.map(Number);return(r*299+g*587+b*114)/1000<140?"#fff":"#111"}
@@ -33,13 +35,13 @@ const S={root:null,sel:new Set(),undo:[],redo:[],edits:0,byId:{},zoom:1,fitPendi
   colAuto:{},colOverride:{},catColors:{},numInfo:{},
   freq:null,freqCols:[],freqSamples:[],freqNodes:[],fIdx:new Map(),
   wide:null, // {id, columns, rows:Map}
-  selSamples:[],sampleColors:{},sampleFilters:{},sampleSearch:"",
+  selSamples:[],sampleColors:{},sampleFilters:{},sampleSearch:"",filtMin:false,openDD:null,freqChildren:[],childParent:new Map(),
   tab:"samples",treeName:"tree",
   opts:{layout:"rect",scale:"phylo",xform:"linear",cap:30,boost:0,treeW:600,rowH:18,arc:350,rot:0,innerR:0,lw:1.5,borrow:true,borrow:true,
     showTips:true,align:false,nodeDots:false,nodeLabels:false,brLen:false,scaleBar:true,sup:false,supMin:0,legend:true,
     fs:12,tipOff:6,nlx:0,nly:-4,blx:0,bly:-4,blDec:4,
     labelCols:["__name"],cby:"",clab:true,dots:[],dotShape:"circle",dotSize:11,grad:"viridis",
-    fmode:"bars",fstat:"mean",brSample:"",fgrad:"reds",shared:false,lofreq:false,minDepth:0,minFreq:0,posMode:"All",posList:"",sort:"mean",hideNodes:[],
+    fmode:"bars",anchor:"edge",fstat:"mean",brSample:"",fgrad:"reds",shared:false,lofreq:false,minDepth:0,minFreq:0,posMode:"All",posList:"",sort:"mean",hideNodes:[],hideBy:"node",
     rowGap:16,barGap:6,barW:4.5,barH:13,barShift:0,rangeW:90,barLabels:true,
     wideCols:[],wideMode:"stack",wideNorm:true,wideW:140}};
 
@@ -203,16 +205,16 @@ function colourFor(col,v){
 /* ---------------------------------------------------------------- frequency table */
 const FIELD_ALIASES={sample:["sample","sampleid","sample_uid","sampleuid"],node:["node","nodename","clade"],
   freq:["derivedallelefrequency","frequency","freq","af","alleleFrequency"],truePos:["truepos","position","pos"],
-  rel:["relativepos","relpos"],allele:["derivedallele","allele"],depth:["depth","dp","coverage"],lofreq:["inlofreqvcf","lofreq"],rowType:["rowtype"]};
+  rel:["relativepos","relpos"],child:["childnode","child"],allele:["derivedallele","allele"],depth:["depth","dp","coverage"],lofreq:["inlofreqvcf","lofreq"],rowType:["rowtype"]};
 function findCol(cols,key){const al=FIELD_ALIASES[key].map(normCol);for(const a of al){const c=cols.find(c=>normCol(c)===a);if(c)return c}return null}
 function loadFreqTable(tab){
   const cols=tab.columns,cS=findCol(cols,"sample"),cN=findCol(cols,"node");
   if(cS&&cN){
     const cF=findCol(cols,"freq");if(!cF)throw new Error("Frequency table needs a frequency column (derived_allele_frequency / frequency)");
-    const cP=findCol(cols,"truePos"),cR=findCol(cols,"rel"),cA=findCol(cols,"allele"),cD=findCol(cols,"depth"),cL=findCol(cols,"lofreq"),cT=findCol(cols,"rowType");
+    const cC=findCol(cols,"child"),cP=findCol(cols,"truePos"),cR=findCol(cols,"rel"),cA=findCol(cols,"allele"),cD=findCol(cols,"depth"),cL=findCol(cols,"lofreq"),cT=findCol(cols,"rowType");
     const sumCols=cols.filter(c=>/^summary_/.test(c));
     const rows=tab.rows.map(r=>{const allele=cA?String(r[cA]).toUpperCase():"";
-      const o={raw:r,Sample:String(r[cS]).trim(),node:String(r[cN]).trim(),pos:cP?normPos(r[cP]):"",rel:cR?num(r[cR]):NaN,allele,
+      const o={raw:r,Sample:String(r[cS]).trim(),node:String(r[cN]).trim(),child:cC?String(r[cC]??"").trim():"",pos:cP?normPos(r[cP]):"",rel:cR?num(r[cR]):NaN,allele,
         freq:num(r[cF]),depth:cD?num(r[cD]):NaN,lofreq:cL?(num(r[cL])||0):0,type:cT&&String(r[cT]).trim()?String(r[cT]).trim():"site",
         reads:allele&&r[allele]!==undefined?num(r[allele]):NaN};
       sumCols.forEach(c=>o[c.replace(/^summary_/,"s_")]=num(r[c]));return o}).filter(o=>o.Sample&&o.node);
@@ -220,6 +222,8 @@ function loadFreqTable(tab){
     S.fIdx=new Map();rows.forEach(o=>{let m=S.fIdx.get(o.Sample);if(!m)S.fIdx.set(o.Sample,m=new Map());let a=m.get(o.node);if(!a)m.set(o.node,a=[]);a.push(o)});
     S.freqSamples=[...S.fIdx.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
     S.freqNodes=[...new Set(rows.map(o=>o.node))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    S.childParent=new Map();rows.forEach(o=>{if(o.child)S.childParent.set(o.child,o.node)});
+    S.freqChildren=[...S.childParent.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
     S.selSamples=S.selSamples.filter(s=>S.fIdx.has(s));S.opts.hideNodes=[];
     return`${rows.length} rows · ${S.freqSamples.length} samples · ${S.freqNodes.length} nodes`}
   // otherwise: wide per-tip value table (rows = tips, numeric columns)
@@ -235,19 +239,21 @@ function parsePosList(t){return new Set(String(t||"").split(/[\s,;]+/).map(normP
 const wideOf=n=>S.wide?lookupIn(S.wide.rows,n.orig??n.name):null;
 
 /* filtered rows for selected samples: Map node -> Map sample -> rows */
-function filteredFreq(){
+function filteredFreq(keyFn){
+  keyFn=keyFn||(r=>r.node);
   const o=S.opts,out=new Map();if(!S.freq||!S.selSamples.length)return out;
   const hidden=new Set(o.hideNodes),pos=parsePosList(o.posList);
   for(const s of S.selSamples){const m=S.fIdx.get(s);if(!m)continue;
-    for(const[node,rows]of m){if(hidden.has(node))continue;
-      const keep=rows.filter(r=>{
+    const byChild=o.hideBy==="child";
+    for(const[node,rows]of m){if(!byChild&&hidden.has(node))continue;
+      const keep=rows.filter(r=>{if(byChild&&hidden.has(r.child||r.node))return false;
         if(r.type==="site"){if(!isFinite(r.freq))return false;
           if(pos.size&&o.posMode==="Include"&&!pos.has(r.pos))return false;
           if(pos.size&&o.posMode==="Exclude"&&pos.has(r.pos))return false;
           if(o.minDepth>0&&!(r.depth>=o.minDepth))return false;
           if(o.lofreq&&r.lofreq!==1)return false}
         return true});
-      if(!keep.length)continue;let a=out.get(node);if(!a)out.set(node,a=new Map());a.set(s,keep)}}
+      for(const r of keep){const k=keyFn(r);let a=out.get(k);if(!a)out.set(k,a=new Map());let b=a.get(s);if(!b)a.set(s,b=[]);b.push(r)}}}
   if(o.shared&&S.selSamples.length>1){
     for(const[node,m]of out){const sets=S.selSamples.map(s=>new Set((m.get(s)||[]).filter(r=>r.type==="site").map(r=>r.pos)));
       const common=new Set([...sets[0]].filter(p=>sets.every(st=>st.has(p))));
@@ -319,6 +325,7 @@ function branchMid(n){const p=n.parent,L=S.opts.layout;
 function tipLabelParts(n){const cols=S.opts.labelCols;if(!cols.length)return[{t:n.name,c:null}];const m=metaOfTip(n);const out=[];
   cols.forEach(c=>{if(c==="__name")out.push({t:n.name,c:null});else if(m&&!isNA(m[c]))out.push({t:dispVal(m[c]),c:colourFor(c,m[c])})});
   return out.length?out:[{t:n.name,c:null}]}
+const shortName=c=>String(c).replace(/^(NextSeq|MiniSeq)[^_]*_/,"").replace(/_S\d+_L\d+$/,"").slice(0,24);
 const partsText=p=>p.map(x=>x.t).join(" | ");
 function tspans(parts,base){return parts.map((p,i)=>(i?`<tspan fill="#9ca3af"> | </tspan>`:"")+`<tspan fill="${p.c||base}">${esc(p.t)}</tspan>`).join("")}
 function metaTip(n){const m=metaOfTip(n);let s=n.name;if(n.orig&&n.orig!==n.name)s+=` (orig: ${n.orig})`;if(m){S.meta.columns.forEach(c=>s+=`\n${c}: ${isNA(m[c])?"NA":dispVal(m[c])}${m.__borrowed&&m.__borrowed.has(c)?"  ← from "+m.__from:""}`)}else if(S.meta.columns.length)s+="\n(no metadata row for this tip)";return s}
@@ -328,8 +335,11 @@ function render(){
   layout();
   const o=S.opts,fs=o.fs,L=o.layout,vis=G.vis,lw=o.lw;
   const rectish=L==="rect"||L==="slant";
-  const ff=filteredFreq();
   const nodeByKey=new Map();allNodes().forEach(n=>{if(!isVisible(n))return;if(n.key)nodeByKey.set(n.key,n);(n.alias||[]).forEach(a=>nodeByKey.set(a,n))});const rowsUsed=new Map();
+  const grpLabel=new Map();
+  const anchorKey=r=>{let k=r.node;if(o.anchor==="edge"&&r.child&&r.child!==r.node&&nodeByKey.has(r.child))k=r.child;
+    if(!grpLabel.has(k))grpLabel.set(k,k===r.node?(r.type==="site"&&o.anchor==="edge"&&r.child&&r.child!==r.node?r.node+" (+collapsed branches)":r.node):r.node+"→"+shortName(r.child));return k};
+  const ff=filteredFreq(anchorKey);
   // branch colouring by frequency
   let brVal=null;if(o.brSample&&ff.size){brVal=new Map();for(const[node,m]of ff){const r=m.get(o.brSample);if(r){const st=statOf(r);if(st)brVal.set(node,st[o.fstat==="n"?"mean":o.fstat])}}}
   const P=[];// layers
@@ -423,38 +433,48 @@ function render(){
 
   // ---- population frequencies on branches
   if(ff.size&&o.fmode!=="off"){
-    const wantBars=(o.fmode==="bars"||o.fmode==="both")&&rectish,wantVals=o.fmode==="values"||o.fmode==="both"||!rectish;
+    const wantHist=o.fmode==="hist"&&rectish;
+    const wantBars=(o.fmode==="bars"||o.fmode==="both"||wantHist)&&rectish,wantVals=o.fmode==="values"||o.fmode==="both"||!rectish;
     for(const[node,m]of ff){const n=nodeByKey.get(node);if(!n)continue;
       const[mx0,my]=n.parent?branchMid(n):[n.X,n.Y];const mx=mx0+(rectish?o.barShift:0);
-      if(wantBars){const order=positionOrder(node,m);const pi=new Map(order.map((p,i)=>[p,i]));
+      if(wantBars){const order=wantHist?[...Array(10).keys()].map(String):positionOrder(node,m);const pi=new Map(order.map((p,i)=>[p,i]));
         const xs=mx-(order.length-1)*o.barGap/2;let k=rowsUsed.get(n.id)||0;
         for(const s of S.selSamples){const rows=m.get(s);if(!rows)continue;const col=S.sampleColors[s]||"#1f77b4";
           const sums=rows.filter(r=>r.type!=="site");const sites=rows.filter(r=>r.type==="site"&&r.freq>=o.minFreq);
           if(sums.length){const r=sums[0];if(!isFinite(r.s_max_frequency)||r.s_max_frequency<o.minFreq)continue;
             const base=my+(k+1)*o.rowGap;k++;const W=o.rangeW,x0=mx;const X=v=>x0+(isFinite(v)?v:0)*W,yy=base-o.barH/2;
-            const tt=esc(`Node: ${node}\nSample: ${s}\nsites with data: ${fmtN(r.s_n_sites,0)} / total ${fmtN(r.s_total_node_sites,0)}\nsegregating: ${fmtN(r.s_n_segregating_sites,0)}\nmin/Q1/median/Q3/max: ${[r.s_min_frequency,r.s_q1_frequency,r.s_median_frequency,r.s_q3_frequency,r.s_max_frequency].map(v=>fmtN(v,4)).join(" / ")}\nmean: ${fmtN(r.s_mean_frequency,4)}`);
+            const tt=esc(`Branch: ${grpLabel.get(node)||node} (summary of a long branch)\nSample: ${s}\nsites with data: ${fmtN(r.s_n_sites,0)} / total ${fmtN(r.s_total_node_sites,0)}\nsegregating: ${fmtN(r.s_n_segregating_sites,0)}\nmin/Q1/median/Q3/max: ${[r.s_min_frequency,r.s_q1_frequency,r.s_median_frequency,r.s_q3_frequency,r.s_max_frequency].map(v=>fmtN(v,4)).join(" / ")}\nmean: ${fmtN(r.s_mean_frequency,4)}`);
             Lfreq.push(`<path d="M${x0},${yy}H${x0+W}M${x0},${yy-4}V${yy+4}M${x0+W},${yy-4}V${yy+4}" stroke="#9ca3af" stroke-width="1"/>`+
               `<path d="M${X(r.s_min_frequency)},${yy}H${X(r.s_max_frequency)}" stroke="${col}" stroke-width="3" data-tt="${tt}"/>`+
               `<path d="M${X(isFinite(r.s_q1_frequency)?r.s_q1_frequency:r.s_min_frequency)},${yy}H${X(isFinite(r.s_q3_frequency)?r.s_q3_frequency:r.s_max_frequency)}" stroke="${col}" stroke-opacity=".6" stroke-width="7" data-tt="${tt}"/>`+
               `<path d="M${X(r.s_median_frequency)},${yy-4}l4,4l-4,4l-4,-4Z" fill="#111" data-tt="${tt}"/>`+
               `<text x="${x0+W+6}" y="${yy+3}" font-size="${Math.max(7,fs-3)}" fill="#333" font-family="${FONT}">${fmtN(r.s_min_frequency,2)}–${fmtN(r.s_max_frequency,2)}</text>`);
-            if(o.barLabels)Lfreq.push(`<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="${Math.max(7,fs-2)}" font-family="${FONT}" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${esc(node)} | ${tspans(sampleLabel(s),col)}</text>`);
+            if(o.barLabels)Lfreq.push(`<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="${Math.max(7,fs-2)}" font-family="${FONT}" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${esc(grpLabel.get(node)||node)} | ${tspans(sampleLabel(s),col)}</text>`);
             continue}
           if(!sites.length)continue;const base=my+(k+1)*o.rowGap;k++;
           let g="";const best=new Map();sites.forEach(r=>{const p=best.get(r.pos);if(!p||r.freq>p.freq)best.set(r.pos,r)});
+          if(wantHist){const cnt=Array(10).fill(0);for(const r of best.values())cnt[Math.min(9,Math.floor(r.freq*10))]++;const mxc=Math.max(1,...cnt);
+            cnt.forEach((c,i)=>{const x=xs+i*o.barGap-o.barW/2,h=c?Math.max(1.5,c/mxc*o.barH):0;
+              const tt=esc(`Branch: ${grpLabel.get(node)||node}\nSample: ${s}\nFrequency bin ${(i/10).toFixed(1)}–${((i+1)/10).toFixed(1)}${i===9?" (incl. 1.0)":""}\nSNP sites in this bin: ${c} of ${best.size}`);
+              g+=`<rect x="${x}" y="${base-o.barH}" width="${o.barW}" height="${o.barH}" fill="#fff" fill-opacity=".85" stroke="#d1d5db" stroke-width=".5" data-tt="${tt}"/>`;
+              if(h>0)g+=`<rect x="${x}" y="${base-h}" width="${o.barW}" height="${h}" fill="${col}" stroke="#222" stroke-width=".3" data-tt="${tt}"/>`});
+            g+=`<text x="${xs-o.barW/2}" y="${base+Math.max(7,fs-4)}" font-size="${Math.max(6,fs-4)}" fill="#6b7280" font-family="${FONT}">0</text><text x="${xs+9*o.barGap+o.barW/2}" y="${base+Math.max(7,fs-4)}" text-anchor="end" font-size="${Math.max(6,fs-4)}" fill="#6b7280" font-family="${FONT}">1</text><text x="${xs+9*o.barGap+o.barW/2+4}" y="${base-o.barH/2+3}" font-size="${Math.max(6,fs-4)}" fill="#6b7280" font-family="${FONT}">n=${best.size}</text>`;
+            Lfreq.push(g);
+            if(o.barLabels)Lfreq.push(`<text x="${xs-o.barGap}" y="${base-o.barH/2+3}" text-anchor="end" font-size="${Math.max(7,fs-2)}" font-family="${FONT}" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${esc(grpLabel.get(node)||node)} | ${tspans(sampleLabel(s),col)}</text>`);
+            continue}
           for(const r of best.values()){const i=pi.get(r.pos);if(i===undefined)continue;const x=xs+i*o.barGap-o.barW/2;const h=r.freq===0?0:Math.min(o.barH,Math.max(r.freq,.01)*o.barH);
-            const tt=esc(`Node: ${node}\nSample: ${s}\nPosition: ${r.pos||"–"}${isFinite(r.rel)?" (relative "+r.rel+")":""}\nAllele: ${r.allele||"–"}\nFrequency: ${fmtN(r.freq,4)}\nDepth: ${isFinite(r.depth)?r.depth:"–"}\nDerived reads: ${isFinite(r.reads)?r.reads:"–"}\nLoFreq support: ${r.lofreq}`);
+            const tt=esc(`Branch: ${grpLabel.get(node)||node}\nSample: ${s}\nPosition: ${r.pos||"–"}${isFinite(r.rel)?" (relative "+r.rel+")":""}\nAllele: ${r.allele||"–"}\nFrequency: ${fmtN(r.freq,4)}\nDepth: ${isFinite(r.depth)?r.depth:"–"}\nDerived reads: ${isFinite(r.reads)?r.reads:"–"}\nLoFreq support: ${r.lofreq}`);
             g+=`<rect x="${x}" y="${base-o.barH}" width="${o.barW}" height="${o.barH}" fill="#fff" fill-opacity=".85" stroke="#8a8a8a" stroke-width=".6" data-tt="${tt}"/>`;
             if(h>0)g+=`<rect x="${x}" y="${base-h}" width="${o.barW}" height="${h}" fill="${col}" stroke="#222" stroke-width=".3" data-tt="${tt}"/>`}
           Lfreq.push(g);
-          if(o.barLabels)Lfreq.push(`<text x="${xs-o.barGap}" y="${base-o.barH/2+3}" text-anchor="end" font-size="${Math.max(7,fs-2)}" font-family="${FONT}" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${esc(node)} | ${tspans(sampleLabel(s),col)}</text>`)}
+          if(o.barLabels)Lfreq.push(`<text x="${xs-o.barGap}" y="${base-o.barH/2+3}" text-anchor="end" font-size="${Math.max(7,fs-2)}" font-family="${FONT}" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">${esc(grpLabel.get(node)||node)} | ${tspans(sampleLabel(s),col)}</text>`)}
         rowsUsed.set(n.id,k)}
       if(wantVals){let k=0;for(const s of S.selSamples){const rows=m.get(s);if(!rows)continue;const st=statOf(rows);if(!st)continue;
         const v=o.fstat==="n"?st.n:st[o.fstat];if(o.fstat!=="n"&&isFinite(st.max)&&st.max<o.minFreq)continue;
-        const txt=o.fstat==="n"?String(v):fmtN(v,2);const bw=txt.length*fs*.6+8,bh=fs+4;
+        const isSum=!rows.some(r=>r.type==="site");const txt=(isSum?"~":"")+(o.fstat==="n"?String(v):(isFinite(v)?(+v).toFixed(2):"NA"));const bw=txt.length*fs*.6+8,bh=fs+4;
         const off=wantBars?-(bh+4):6;const x=mx-bw/2,y=my+off+k*(bh+2)-(wantBars?k*2*(bh+2):0);k++;
         const fill=o.fstat==="n"?"#fff":gradAt(o.fgrad,v);const col=S.sampleColors[s]||"#1f77b4";
-        const tt=esc(`Node: ${node}\nSample: ${s}\npositions: ${st.n}\nmean ${fmtN(st.mean,4)} · median ${fmtN(st.median,4)}\nmin ${fmtN(st.min,4)} · max ${fmtN(st.max,4)}`);
+        const tt=esc(`Branch: ${grpLabel.get(node)||node}\nSample: ${s}\nSNP sites: ${st.n}\nmean ${fmtN(st.mean,4)} · median ${fmtN(st.median,4)}\nmin ${fmtN(st.min,4)} · max ${fmtN(st.max,4)}`+(isSum?`\n\n~ = taken from a summary row: it averages thousands of SNPs that sit on SEVERAL branches below this node, so even a pure population gives ~0.3–0.4 here. It is NOT the share of the population in one lineage.`:`\n\nBadge = ${o.fstat} derived-allele frequency over this branch's SNP sites for this sample.`));
         Lfreq.push(`<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="4" fill="${fill}" stroke="${col}" stroke-width="2" data-tt="${tt}"/><text x="${mx}" y="${y+bh/2+fs*.35}" text-anchor="middle" font-size="${fs-1}" font-weight="600" fill="${textOn(fill)}" font-family="${FONT}" pointer-events="none">${txt}</text>`)}}}}
 
   // ---- assemble, fit, scale bar, legend
@@ -494,10 +514,18 @@ function legendSvg(x0,y0,ff){
       if(arr.length)blocks.push({title:c,items:arr.slice(0,40).map(v=>({label:dispVal(v),color:colourFor(c,v)})),more:arr.length>40?arr.length-40:0})}});
   if(S.wide&&o.wideCols.length){if(o.wideMode==="stack")blocks.push({title:"Tip values",items:o.wideCols.map(c=>({label:c,color:wideColour(c)}))});else blocks.push({title:"Tip values",grad:o.fgrad,lo:0,hi:"max"})}
   if(S.selSamples.length&&ff&&ff.size){blocks.push({title:"Population samples",items:S.selSamples.map(s=>({label:s,color:S.sampleColors[s]}))});
-    if(o.fmode!=="bars"||o.brSample||!(o.layout==="rect"||o.layout==="slant"))blocks.push({title:"Allele frequency",grad:o.fgrad,lo:0,hi:1})}
+    if(o.fmode!=="bars"&&o.fmode!=="hist"||o.brSample||!(o.layout==="rect"||o.layout==="slant"))blocks.push({title:"Allele frequency",grad:o.fgrad,lo:0,hi:1});
+    const rect=o.layout==="rect"||o.layout==="slant",L=[];
+    if(rect&&(o.fmode==="bars"||o.fmode==="both"))L.push("Bars: 1 bar = 1 SNP site on that branch","bar height = derived-allele frequency (0 to 1)","empty box = 0% (allele absent / not covered)");
+    if(rect&&o.fmode==="hist")L.push("Histogram: the branch's SNP sites binned by","frequency, 10 bins from 0 (left) to 1 (right);","bar height = number of sites in the bin, n = total");
+    if(rect&&o.fmode!=="values")L.push("Range glyph (long branches): line = min–max,","thick part = Q1–Q3, ◆ = median, over all sites");
+    if(o.fmode==="values"||o.fmode==="both"||!rect)L.push("Badge = "+o.fstat+" frequency of the sample on that branch","~ = summary over several branches (not a lineage %)");
+    L.push(o.anchor==="edge"?"Placed on the branch where the SNPs arose (child_node)":"Placed on the parent node (PopSeqViz style)");
+    blocks.push({title:"How to read",lines:L})}
   let y=y0,s="";
   blocks.forEach(b=>{s+=`<text x="${x0}" y="${y}" font-size="${fs+1}" font-weight="700" font-family="${FONT}">${esc(b.title)}</text>`;y+=8;
-    if(b.items){b.items.forEach(it=>{s+=`<rect x="${x0}" y="${y}" width="11" height="11" rx="2" fill="${it.color}" stroke="#444" stroke-width=".4"/><text x="${x0+16}" y="${y+9.5}" font-size="${fs}" font-family="${FONT}">${esc(it.label)}</text>`;y+=15});
+    if(b.lines){y+=4;b.lines.forEach(l=>{s+=`<text x="${x0}" y="${y+9}" font-size="${fs}" fill="#374151" font-family="${FONT}">${esc(l)}</text>`;y+=14})}
+    else if(b.items){b.items.forEach(it=>{s+=`<rect x="${x0}" y="${y}" width="11" height="11" rx="2" fill="${it.color}" stroke="#444" stroke-width=".4"/><text x="${x0+16}" y="${y+9.5}" font-size="${fs}" font-family="${FONT}">${esc(it.label)}</text>`;y+=15});
       if(b.more){s+=`<text x="${x0}" y="${y+9}" font-size="${fs}" fill="#777" font-family="${FONT}">… ${b.more} more</text>`;y+=15}}
     else{const id="lg"+Math.random().toString(36).slice(2,8);
       s+=`<defs><linearGradient id="${id}">${[0,.25,.5,.75,1].map(t=>`<stop offset="${t*100}%" stop-color="${gradAt(b.grad,t)}"/>`).join("")}</linearGradient></defs><rect x="${x0}" y="${y}" width="130" height="11" fill="url(#${id})" stroke="#444" stroke-width=".4"/>`;
@@ -540,9 +568,19 @@ $("wrap").addEventListener("wheel",e=>{if(S.root&&(e.shiftKey||e.altKey)&&!e.ctr
 /* ---------------------------------------------------------------- edit actions */
 function need(){const ns=selNodes();if(!ns.length){toast("Select a branch, node or tip first.");return null}return ns}
 const on=(id,f)=>$(id).addEventListener("click",f);
-on("e_rr",()=>{const ns=need();if(!ns)return;let f=parseFloat($("e_rf").value);f=isNaN(f)?.5:Math.min(1,Math.max(0,f));edit(()=>reroot(ns[0],f));S.sel.clear();updInfo();render()});
-on("e_rmrca",()=>{const ns=need();if(!ns)return;const m=mrca(ns);if(!m||!m.parent)return toast("The common ancestor is already the root.");edit(()=>reroot(m,.5));S.sel.clear();render()});
-on("e_rmid",()=>{edit(midpointRoot);S.sel.clear();render()});
+function rerootUI(){const m=$("e_rmode").value;$("e_rr_frac").style.display=(m==="here"||m==="mrca"||m==="out")?"flex":"none";$("e_rr_out").style.display=m==="out"?"flex":"none";
+  $("e_rr_hint").textContent={here:"Click a branch first.",mrca:"Select two or more tips first.",out:"Type part of the outgroup name(s).",mid:"No selection needed."}[m]}
+$("e_rmode").addEventListener("change",rerootUI);
+on("e_rr",()=>{if(!S.root)return;const mode=$("e_rmode").value;let f=parseFloat($("e_rf").value);f=isNaN(f)?.5:Math.min(1,Math.max(0,f));
+  if(mode==="mid"){edit(midpointRoot);S.sel.clear();updInfo();render();return}
+  let target=null;
+  if(mode==="here"){const ns=need();if(!ns)return;target=ns[0]}
+  else{let ns;
+    if(mode==="mrca"){ns=need();if(!ns)return}
+    else{const q=$("e_rout").value.trim();if(!q)return toast("Type the outgroup tip name (or part of it).");const mm=q.match(/^\/(.+)\/([a-z]*)$/);let re=null;try{if(mm)re=new RegExp(mm[1],mm[2]||"i")}catch(e){return toast("Bad regex")}
+      ns=tipsOf(S.root).filter(t=>{const nm=String(t.orig??t.name);return re?re.test(nm):nm.toLowerCase().includes(q.toLowerCase())});if(!ns.length)return toast("No tip matches “"+q+"”")}
+    target=ns.length===1?ns[0]:mrca(ns);if(!target||!target.parent)return toast("That group already sits at the root — try one of the other options.")}
+  edit(()=>reroot(target,f));S.sel.clear();updInfo();render();toast("Rerooted")});
 on("e_rnb",()=>{const ns=need();if(!ns)return;const v=$("e_rn").value;edit(()=>ns.forEach(n=>{if(isTip(n))n.name=v;else n.lab=v}))});
 on("e_clb",()=>{const ns=need();if(!ns)return;edit(()=>ns.forEach(n=>n.cl=$("e_cl").value))});
 on("e_blb",()=>{const ns=need();if(!ns)return;const v=parseFloat($("e_bl").value);if(isNaN(v))return;edit(()=>ns.forEach(n=>{if(n.parent)n.len=v}))});
@@ -586,8 +624,8 @@ on("s_rep",mm(false));on("s_add",mm(true));
 
 /* ---------------------------------------------------------------- option binding */
 const OPT_IDS={layout:"s",scale:"s",xform:"s",cap:"n",boost:"n",treeW:"n",rowH:"n",arc:"n",rot:"n",innerR:"n",lw:"n",showTips:"b",align:"b",nodeDots:"b",nodeLabels:"b",brLen:"b",scaleBar:"b",sup:"b",supMin:"n",legend:"b",
-  fs:"n",tipOff:"n",nlx:"n",nly:"n",blx:"n",bly:"n",blDec:"n",cby:"s",clab:"b",dotShape:"s",dotSize:"n",grad:"s",fmode:"s",fstat:"s",brSample:"s",fgrad:"s",shared:"b",lofreq:"b",minDepth:"n",minFreq:"n",posMode:"s",posList:"s",sort:"s",
-  rowGap:"n",barGap:"n",barW:"n",barH:"n",barShift:"n",rangeW:"n",barLabels:"b",tipKey:"K",sampleKey:"K",borrow:"b"};
+  fs:"n",tipOff:"n",nlx:"n",nly:"n",blx:"n",bly:"n",blDec:"n",cby:"s",clab:"b",dotShape:"s",dotSize:"n",grad:"s",fmode:"s",anchor:"s",fstat:"s",brSample:"s",fgrad:"s",shared:"b",lofreq:"b",minDepth:"n",minFreq:"n",posMode:"s",posList:"s",sort:"s",
+  rowGap:"n",barGap:"n",barW:"n",barH:"n",barShift:"n",rangeW:"n",barLabels:"b",hideBy:"s",tipKey:"K",sampleKey:"K",borrow:"b"};
 let rT=0;function rerender(fit){if(fit)S.fitPending=true;cancelAnimationFrame(rT);rT=requestAnimationFrame(()=>{render();updInfo()})}
 Object.entries(OPT_IDS).forEach(([k,t])=>{const el=$("o_"+k);if(!el)return;
   const h=()=>{if(t==="K"){S[k]=el.value;if(k==="tipKey")S.mTip=buildIndex(el.value);else S.mSample=buildIndex(el.value);buildBorrow();renderTab();rerender();return}
@@ -595,6 +633,7 @@ Object.entries(OPT_IDS).forEach(([k,t])=>{const el=$("o_"+k);if(!el)return;
     S.opts[k]=t==="b"?el.checked:t==="n"?(parseFloat(el.value)||0):el.value;
     if(k==="posMode")$("o_posList").style.display=el.value==="All"?"none":"block";
     if(k==="layout")showModeRows();
+    if(k==="hideBy"){S.opts.hideNodes=[];refreshFreqControls()}
     rerender(["layout","scale","xform"].includes(k))};
   el.addEventListener(el.type==="range"||el.tagName==="TEXTAREA"||el.type==="number"?"input":"change",h);if(el.type==="number")el.addEventListener("change",h)});
 function syncControls(){Object.entries(OPT_IDS).forEach(([k,t])=>{const el=$("o_"+k);if(!el||t==="K")return;const v=S.opts[k];if(t==="b")el.checked=!!v;else el.value=v});
@@ -617,7 +656,8 @@ const dispName=c=>c;
 function refreshFreqControls(){
   $("o_brSample").innerHTML='<option value="">(none)</option>'+S.selSamples.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
   if(!S.selSamples.includes(S.opts.brSample))S.opts.brSample="";$("o_brSample").value=S.opts.brSample;
-  checkList("c_hideNodes",S.freqNodes,"hideNodes");
+  if(S.opts.hideBy==="child"){const ch=S.freqChildren||[];checkList("c_hideNodes",ch,"hideNodes",ch.map(c=>c+"  (parent "+(S.childParent.get(c)||"?")+")"))}
+  else checkList("c_hideNodes",S.freqNodes,"hideNodes");
   $("freqNote").innerHTML=S.freq?`${S.freqSamples.length} population samples · ${S.freqNodes.length} nodes. Tick samples in the <b>Population samples</b> tab below.`
     :S.wide?`Per-tip value table loaded (${S.wide.columns.length} columns). Pick columns in the <b>Columns &amp; colours</b> tab.`:"Load a population frequency table, then tick samples in the “Population samples” tab below."}
 
@@ -631,9 +671,14 @@ function renderTab(){const b=$("tabbody");const T=S.tab;
   if(T==="samples"){
     if(!S.freq){b.innerHTML='<div class="muted">No population frequency table loaded. Expected columns (PopSeqViz format): <code>Sample, node, true_pos, relative_pos, derived_allele, derived_allele_frequency, depth, A, C, G, T, in_lofreq_vcf</code> (plus optional <code>row_type</code> / <code>summary_*</code>). At minimum: <code>Sample, node, derived_allele_frequency</code>.</div>';return}
     const fc=filterCols(),cols=S.meta.columns.filter(c=>c!==S.sampleKey);
-    let h='<div class="flt">';fc.forEach(c=>{const vals=[...new Set(sampleRows().map(r=>r.m?r.m[c]:"").filter(v=>!isNA(v)).map(String))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-      const sel=S.sampleFilters[c]||[];h+=`<label>${esc(c)}<br><select multiple size="4" data-f="${esc(c)}">${vals.map(v=>`<option ${sel.includes(v)?"selected":""}>${esc(v)}</option>`).join("")}</select></label>`});
-    h+=`<div style="display:flex;flex-direction:column;gap:4px"><input type="text" id="t_sq" placeholder="search samples…" value="${esc(S.sampleSearch)}"><div class="row"><button id="t_all">Select shown</button><button id="t_none">Clear selection</button><button id="t_clrf">Clear filters</button></div><span class="note">Click a sample <b>name</b> to show only that sample; tick boxes to compare several (tick order = colour order and sort priority).</span></div></div>`;
+    const nf=fc.filter(c=>(S.sampleFilters[c]||[]).length);
+    const fsum=nf.map(c=>c+" = "+S.sampleFilters[c].join(", ")).join(" · ")+(S.sampleSearch?(nf.length?" · ":"")+"search “"+S.sampleSearch+"”":"");
+    let h=`<div class="fhead"><button id="t_fmin" title="Show / hide the filter bar">${S.filtMin?"▸":"▾"} Filters</button><span class="fsum">${esc(fsum||"none")}</span><span class="note">${S.selSamples.length} selected</span></div>`;
+    if(!S.filtMin){h+='<div class="flt">';
+    fc.forEach(c=>{const vals=[...new Set(sampleRows().map(r=>r.m?r.m[c]:"").filter(v=>!isNA(v)).map(String))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+      const sel=S.sampleFilters[c]||[];
+      h+=`<div class="dd${S.openDD===c?" open":""}" data-dd="${esc(c)}"><button class="${sel.length?"act":""}">${esc(c)}${sel.length?" ("+sel.length+")":""} ▾</button><div class="ddp"><a href="#" data-ddall="${esc(c)}">All</a> · <a href="#" data-ddnone="${esc(c)}">None</a>${vals.map(v=>`<label><input type="checkbox" data-fc="${esc(c)}" value="${esc(v)}" ${sel.includes(v)?"checked":""}> ${esc(v)}</label>`).join("")}</div></div>`});
+    h+=`<input type="text" id="t_sq" placeholder="search samples…" value="${esc(S.sampleSearch)}"><button id="t_all">Select shown</button><button id="t_none">Clear selection</button><button id="t_clrf">Clear filters</button><span class="note" title="Click a sample name to show only that sample; tick boxes to compare several (tick order = colour order and sort priority).">ⓘ click a name = only that sample; tick = compare</span></div>`}
     const shown=sampleRows().filter(r=>{for(const c of fc){const f=S.sampleFilters[c];if(f&&f.length&&!(r.m&&f.includes(String(r.m[c]))))return false}
       if(S.sampleSearch){const q=S.sampleSearch.toLowerCase();if(!(r.s.toLowerCase().includes(q)||(r.m&&Object.values(r.m).some(v=>String(v).toLowerCase().includes(q)))))return false}return true});
     h+=`<table class="t"><thead><tr><th>Select</th><th>Sample</th><th>nodes</th>${cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>`;
@@ -641,10 +686,15 @@ function renderTab(){const b=$("tabbody");const T=S.tab;
       h+=`<tr><td><input type="checkbox" data-s="${esc(r.s)}" ${on?"checked":""}> ${on?`<span style="display:inline-block;width:12px;height:12px;background:${col};border:1px solid #333;border-radius:2px;vertical-align:middle"></span>`:""}</td><td><a href="#" data-only="${esc(r.s)}" title="show only this sample">${esc(r.s)}</a></td><td>${S.fIdx.get(r.s).size}</td>${cols.map(c=>`<td${cellStyle(c,r.m?r.m[c]:"")}>${esc(r.m?r.m[c]:"")}</td>`).join("")}</tr>`});
     h+="</tbody></table>";if(!S.meta.columns.length)h+='<div class="note">Load a metadata table to see person / site / week here (matched on the “Sample lookup column”).</div>';
     b.innerHTML=h;b.dataset.shown=JSON.stringify(shown.map(r=>r.s));
-    b.querySelectorAll("select[data-f]").forEach(sel=>sel.addEventListener("change",()=>{S.sampleFilters[sel.dataset.f]=[...sel.selectedOptions].map(o=>o.value);renderTab()}));
-    const sq=$("t_sq");sq.addEventListener("input",()=>{S.sampleSearch=sq.value;clearTimeout(sq._t);sq._t=setTimeout(()=>{renderTab();const e=$("t_sq");e.focus();e.setSelectionRange(e.value.length,e.value.length)},250)});
-    on("t_all",()=>{shown.forEach(r=>{if(!S.selSamples.includes(r.s))S.selSamples.push(r.s)});samplesChanged()});
-    on("t_none",()=>{S.selSamples=[];samplesChanged()});on("t_clrf",()=>{S.sampleFilters={};S.sampleSearch="";renderTab()});
+    on("t_fmin",()=>{S.filtMin=!S.filtMin;S.openDD=null;renderTab()});
+    b.querySelectorAll(".dd>button").forEach(bt=>bt.addEventListener("click",e=>{e.stopPropagation();const c=bt.parentNode.dataset.dd;S.openDD=S.openDD===c?null:c;b.querySelectorAll(".dd").forEach(d=>d.classList.toggle("open",d.dataset.dd===S.openDD))}));
+    b.querySelectorAll(".ddp").forEach(p=>p.addEventListener("click",e=>e.stopPropagation()));
+    b.querySelectorAll("input[data-fc]").forEach(cb=>cb.addEventListener("change",()=>{const c=cb.dataset.fc;S.sampleFilters[c]=[...b.querySelectorAll(`input[data-fc="${CSS.escape(c)}"]:checked`)].map(x=>x.value);renderTab()}));
+    b.querySelectorAll("[data-ddall]").forEach(x=>x.addEventListener("click",e=>{e.preventDefault();const c=x.dataset.ddall;S.sampleFilters[c]=[...b.querySelectorAll(`input[data-fc="${CSS.escape(c)}"]`)].map(i=>i.value);renderTab()}));
+    b.querySelectorAll("[data-ddnone]").forEach(x=>x.addEventListener("click",e=>{e.preventDefault();S.sampleFilters[x.dataset.ddnone]=[];renderTab()}));
+    const sq=$("t_sq");if(sq)sq.addEventListener("input",()=>{S.sampleSearch=sq.value;clearTimeout(sq._t);sq._t=setTimeout(()=>{renderTab();const e=$("t_sq");e.focus();e.setSelectionRange(e.value.length,e.value.length)},250)});
+    if(!S.filtMin){on("t_all",()=>{shown.forEach(r=>{if(!S.selSamples.includes(r.s))S.selSamples.push(r.s)});samplesChanged()});
+    on("t_none",()=>{S.selSamples=[];samplesChanged()});on("t_clrf",()=>{S.sampleFilters={};S.sampleSearch="";renderTab()})}
     b.querySelectorAll("a[data-only]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();S.selSamples=[a.dataset.only];samplesChanged()}));
     b.querySelectorAll("input[data-s]").forEach(cb=>cb.addEventListener("change",()=>{const s=cb.dataset.s;if(cb.checked){if(!S.selSamples.includes(s))S.selSamples.push(s)}else S.selSamples=S.selSamples.filter(x=>x!==s);samplesChanged()}));
     return}
@@ -661,7 +711,7 @@ function renderTab(){const b=$("tabbody");const T=S.tab;
     b.querySelectorAll("[data-rm]").forEach(x=>x.addEventListener("click",()=>{S.selSamples=S.selSamples.filter(s=>s!==x.dataset.rm);samplesChanged()}));return}
   if(T==="rows"){
     const rows=freqRowsFlat();if(!rows.length){b.innerHTML='<div class="muted">No frequency rows for the current selection / filters.</div>';return}
-    const cols=["Sample","node","true_pos","relative_pos","derived_allele","frequency","depth","derived_reads","lofreq","row_type"];
+    const cols=["Sample","node","child_node","true_pos","relative_pos","derived_allele","frequency","depth","derived_reads","lofreq","row_type"];
     b.innerHTML=`<div class="note">${rows.length} rows${rows.length>2000?" (first 2000 shown — export CSV for all)":""}</div><table class="t"><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>`+
       rows.slice(0,2000).map(r=>`<tr>${cols.map(c=>`<td${c==="frequency"&&isFinite(r[c])?` style="background:${gradAt(S.opts.fgrad,r[c])};color:${textOn(gradAt(S.opts.fgrad,r[c]))}"`:""}>${esc(typeof r[c]==="number"?fmtN(r[c],4):r[c])}</td>`).join("")}</tr>`).join("")+"</tbody></table>";return}
   if(T==="tips"){
@@ -689,7 +739,7 @@ function samplesChanged(keepCols){const used=new Set(Object.keys(S.sampleColors)
   S.selSamples.forEach((s,i)=>{if(!S.sampleColors[s]||(!keepCols&&false)){S.sampleColors[s]=PAL.find(c=>!used.has(c))||PAL[i%PAL.length];used.add(S.sampleColors[s])}});
   refreshFreqControls();renderTab();rerender()}
 function freqRowsFlat(){const ff=filteredFreq(),out=[];for(const[node,m]of ff)for(const[s,rows]of m)rows.forEach(r=>{if(r.type==="site"&&r.freq<S.opts.minFreq)return;
-  out.push({Sample:s,node,true_pos:r.pos,relative_pos:isFinite(r.rel)?r.rel:"",derived_allele:r.allele,frequency:r.freq,depth:r.depth,derived_reads:r.reads,lofreq:r.lofreq,row_type:r.type})});return out}
+  out.push({Sample:s,node:r.node,child_node:r.child,true_pos:r.pos,relative_pos:isFinite(r.rel)?r.rel:"",derived_allele:r.allele,frequency:r.freq,depth:r.depth,derived_reads:r.reads,lofreq:r.lofreq,row_type:r.type})});return out}
 function tipOrder(){const a=[];(function w(n){if(isTip(n))a.push(n);else n.children.forEach(w)})(S.root);return a}
 
 /* ---------------------------------------------------------------- export */
@@ -755,12 +805,12 @@ document.addEventListener("drop",async e=>{e.preventDefault();for(const f of e.d
     else{const tab=await readTableFile(f);const nc=tab.columns.map(normCol);if(nc.includes("node")&&nc.some(c=>c.startsWith("sample")))setFreq(tab,f.name);else setMeta(tab,f.name)}}
   catch(err){toast("Could not read "+f.name+": "+err.message,6000)}}});
 // session
-function sessionObj(){return{app:"TreeViz",version:2,treeName:S.treeName,tree:S.root?ser(S.root):null,meta:S.meta,tipKey:S.tipKey,sampleKey:S.sampleKey,colOverride:S.colOverride,catColors:S.catColors,
+function sessionObj(){return{app:"PopSeqViz2",version:2,treeName:S.treeName,tree:S.root?ser(S.root):null,meta:S.meta,tipKey:S.tipKey,sampleKey:S.sampleKey,colOverride:S.colOverride,catColors:S.catColors,
   freqTable:S.freq?{columns:S.freqCols,rows:S.freq.map(r=>r.raw)}:null,wide:S.wide?{id:S.wide.id,columns:S.wide.columns,rows:[...S.wide.rows].filter(([k])=>k[0]!=="\u0001")}:null,
   selSamples:S.selSamples,sampleColors:S.sampleColors,opts:S.opts,orig:S.orig||null,savedAt:Date.now()}}
-on("b_save",()=>{if(!S.root)return toast("Nothing to save yet");dl(S.treeName+".treeviz.json",JSON.stringify(sessionObj()),"application/json")});
+on("b_save",()=>{if(!S.root)return toast("Nothing to save yet");dl(S.treeName+".popseqviz2.json",JSON.stringify(sessionObj()),"application/json")});
 function loadSession(o,msg){
-  if(!o||!o.tree)throw new Error("Not a TreeViz session file");
+  if(!o||!o.tree)throw new Error("Not a PopSeqViz2 / TreeViz session file");
   S.meta=o.meta||{columns:[],rows:[]};analyseColumns();S.colOverride=o.colOverride||{};if(o.catColors)Object.assign(S.catColors,o.catColors);
   if(o.freqTable)loadFreqTable(o.freqTable);else{S.freq=null;S.fIdx=new Map();S.freqSamples=[];S.freqNodes=[]}
   if(o.wide){const m=new Map();o.wide.rows.forEach(([k,v])=>{m.set(k,v);m.set("\u0001"+k.toLowerCase(),v)});S.wide={id:o.wide.id,columns:o.wide.columns,rows:m}}
@@ -770,7 +820,7 @@ function loadSession(o,msg){
   ["fl_tree","fl_meta","fl_freq"].forEach(id=>$(id).classList.add("ok"));
   refreshMetaControls();refreshFreqControls();syncControls();S.fitPending=true;render();updInfo();renderTab();toast(msg||"Session loaded")}
 on("b_help",()=>{alertBox()});
-function alertBox(){const h=`<b>TreeViz – quick help</b><br><br>
+function alertBox(){const h=`<b>PopSeqViz2 – quick help</b><br><br>
 <b>Files</b>: Tree (Newick / NEXUS with translate / PhyloXML), Metadata (CSV/TSV/XLSX; one row per sample), Population frequency table (PopSeqViz long format: Sample, node, true_pos, derived_allele_frequency, depth, A/C/G/T, in_lofreq_vcf …). You can also drag &amp; drop files onto the window.<br>
 <b>Population frequencies</b>: tick samples in the bottom “Population samples” tab. Each selected sample is drawn as a row of bars on every branch named in the table (one bar per SNP position, height = derived allele frequency), or as value badges / coloured branches.<br>
 <b>Editing</b>: click a branch/tip/node; Ctrl/Shift-click for multi-select; double-click to collapse; Delete = prune; Ctrl+Z / Ctrl+Y = undo / redo; Ctrl + mouse wheel = zoom.<br>
@@ -778,7 +828,13 @@ function alertBox(){const h=`<b>TreeViz – quick help</b><br><br>
 <b>Save session</b> stores tree edits, data and all settings in one .json file you can reopen later.`;
   $("tabbody").innerHTML=`<div style="max-width:900px;line-height:1.5">${h}</div>`;$("drawer").classList.remove("min")}
 window.addEventListener("resize",()=>{});
-syncControls();refreshMetaControls();refreshFreqControls();renderTab();updInfo();
+document.addEventListener("click",()=>{if(S.openDD){S.openDD=null;document.querySelectorAll(".dd.open").forEach(d=>d.classList.remove("open"))}});
+function setSide(show){$("side").classList.toggle("hid",!show);$("vsplit").classList.toggle("hid",!show);$("b_side").classList.toggle("p",!show);try{localStorage.setItem("psv2_sideHidden",show?"0":"1")}catch(e){}rerender()}
+on("b_side",()=>setSide($("side").classList.contains("hid")));on("b_sideHide",()=>setSide(false));
+on("b_sideExp",()=>document.querySelectorAll("#side details").forEach(d=>d.open=true));on("b_sideCol",()=>document.querySelectorAll("#side details").forEach(d=>d.open=false));
+document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&(e.key==="b"||e.key==="B")&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){e.preventDefault();setSide($("side").classList.contains("hid"))}});
+try{if(localStorage.getItem("psv2_sideHidden")==="1")setSide(false)}catch(e){}
+syncControls();refreshMetaControls();refreshFreqControls();renderTab();updInfo();rerootUI();
 // expose for testing
 window.TV={S,render,setTree,setMeta,setFreq,readTreeText,parseTable,toNewick,filteredFreq,allNodes,tipsOf,reroot};
 

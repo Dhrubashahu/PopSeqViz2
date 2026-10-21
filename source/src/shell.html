@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TreeViz</title>
+<title>PopSeqViz2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4IiB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCI+CiAgPGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMWU0MGFmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMGQ5NDg4Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+CiAgPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiIHJ4PSIyNiIgZmlsbD0idXJsKCNnKSIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPHBhdGggZD0iTTIyIDY0IEg0MCBNNDAgMzYgVjkyIE00MCAzNiBINjIgTTQwIDkyIEg2MiBNNjIgMjQgVjQ4IE02MiAyNCBIODQgTTYyIDQ4IEg4NCBNNjIgOTIgSDk2Ii8+CiAgPC9nPgogIDxnIGZpbGw9IiNmZmYiPjxjaXJjbGUgY3g9Ijg0IiBjeT0iMjQiIHI9IjYiLz48Y2lyY2xlIGN4PSI4NCIgY3k9IjQ4IiByPSI2Ii8+PGNpcmNsZSBjeD0iOTYiIGN5PSI5MiIgcj0iNiIvPjwvZz4KICA8ZyBmaWxsPSIjZmJiZjI0Ij48cmVjdCB4PSI3MiIgeT0iNjYiIHdpZHRoPSI3IiBoZWlnaHQ9IjE0IiByeD0iMiIvPjxyZWN0IHg9IjgyIiB5PSI2MCIgd2lkdGg9IjciIGhlaWdodD0iMjAiIHJ4PSIyIi8+PHJlY3QgeD0iOTIiIHk9IjcwIiB3aWR0aD0iNyIgaGVpZ2h0PSIxMCIgcng9IjIiLz48cmVjdCB4PSIxMDIiIHk9IjU2IiB3aWR0aD0iNyIgaGVpZ2h0PSIyNCIgcng9IjIiLz48L2c+Cjwvc3ZnPg==">
 <style>
 :root{color-scheme:light}
@@ -16,6 +16,9 @@ html,body{margin:0;height:100%;font:12.5px/1.35 "Segoe UI",-apple-system,Helveti
 .fl.ok{border-color:#16a34a;background:#f0fdf4}
 .sep{width:1px;height:24px;background:var(--bd);margin:0 4px}
 #body{display:flex;height:calc(100% - 44px)}
+#side.hid,#vsplit.hid{display:none}
+#sidehead{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px;gap:4px}
+#sidehead button{padding:1px 7px}
 #side{width:320px;min-width:200px;overflow-y:auto;background:var(--bg);border-right:1px solid var(--bd);padding:6px}
 #center{flex:1;display:flex;flex-direction:column;min-width:0}
 #bar{padding:4px 8px;border-bottom:1px solid #e5e7eb;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -56,7 +59,16 @@ table.t{border-collapse:collapse;font-size:12px}
 table.t th,table.t td{border-bottom:1px solid #e5e7eb;padding:3px 7px;text-align:left;white-space:nowrap}
 table.t th{position:sticky;top:0;background:#f3f4f6;z-index:1}
 table.t tr:hover td{background:#f8fafc}
-.flt{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:6px}
+.flt{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.fhead{display:flex;gap:6px;align-items:center;margin-bottom:4px}
+.fhead .fsum{color:var(--mu);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dd{position:relative}
+.dd>button{white-space:nowrap}
+.dd>button.act{border-color:#2563eb;background:#eff6ff}
+.ddp{position:absolute;top:100%;left:0;z-index:15;background:#fff;border:1px solid #b9c0ca;border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.15);padding:4px 6px;max-height:230px;overflow:auto;min-width:150px;display:none}
+.dd.open .ddp{display:block}
+.ddp label{display:block;white-space:nowrap}
+#t_sq{flex:0 1 200px}
 .flt select[multiple]{min-width:110px}
 #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#555;text-align:center;padding:20px}
 #empty b{font-size:16px}
@@ -67,19 +79,21 @@ svg text{user-select:none}
 </style></head>
 <body>
 <div id="top">
-  <h1 style="display:flex;align-items:center;gap:7px"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4IiB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCI+CiAgPGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMWU0MGFmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMGQ5NDg4Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+CiAgPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiIHJ4PSIyNiIgZmlsbD0idXJsKCNnKSIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPHBhdGggZD0iTTIyIDY0IEg0MCBNNDAgMzYgVjkyIE00MCAzNiBINjIgTTQwIDkyIEg2MiBNNjIgMjQgVjQ4IE02MiAyNCBIODQgTTYyIDQ4IEg4NCBNNjIgOTIgSDk2Ii8+CiAgPC9nPgogIDxnIGZpbGw9IiNmZmYiPjxjaXJjbGUgY3g9Ijg0IiBjeT0iMjQiIHI9IjYiLz48Y2lyY2xlIGN4PSI4NCIgY3k9IjQ4IiByPSI2Ii8+PGNpcmNsZSBjeD0iOTYiIGN5PSI5MiIgcj0iNiIvPjwvZz4KICA8ZyBmaWxsPSIjZmJiZjI0Ij48cmVjdCB4PSI3MiIgeT0iNjYiIHdpZHRoPSI3IiBoZWlnaHQ9IjE0IiByeD0iMiIvPjxyZWN0IHg9IjgyIiB5PSI2MCIgd2lkdGg9IjciIGhlaWdodD0iMjAiIHJ4PSIyIi8+PHJlY3QgeD0iOTIiIHk9IjcwIiB3aWR0aD0iNyIgaGVpZ2h0PSIxMCIgcng9IjIiLz48cmVjdCB4PSIxMDIiIHk9IjU2IiB3aWR0aD0iNyIgaGVpZ2h0PSIyNCIgcng9IjIiLz48L2c+Cjwvc3ZnPg==" width="26" height="26" alt="">TreeViz</h1>
+  <button id="b_side" title="Hide / show the side panel (Ctrl+B)">☰</button>
+  <h1 style="display:flex;align-items:center;gap:7px"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4IiB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCI+CiAgPGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMWU0MGFmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMGQ5NDg4Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+CiAgPHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiIHJ4PSIyNiIgZmlsbD0idXJsKCNnKSIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogICAgPHBhdGggZD0iTTIyIDY0IEg0MCBNNDAgMzYgVjkyIE00MCAzNiBINjIgTTQwIDkyIEg2MiBNNjIgMjQgVjQ4IE02MiAyNCBIODQgTTYyIDQ4IEg4NCBNNjIgOTIgSDk2Ii8+CiAgPC9nPgogIDxnIGZpbGw9IiNmZmYiPjxjaXJjbGUgY3g9Ijg0IiBjeT0iMjQiIHI9IjYiLz48Y2lyY2xlIGN4PSI4NCIgY3k9IjQ4IiByPSI2Ii8+PGNpcmNsZSBjeD0iOTYiIGN5PSI5MiIgcj0iNiIvPjwvZz4KICA8ZyBmaWxsPSIjZmJiZjI0Ij48cmVjdCB4PSI3MiIgeT0iNjYiIHdpZHRoPSI3IiBoZWlnaHQ9IjE0IiByeD0iMiIvPjxyZWN0IHg9IjgyIiB5PSI2MCIgd2lkdGg9IjciIGhlaWdodD0iMjAiIHJ4PSIyIi8+PHJlY3QgeD0iOTIiIHk9IjcwIiB3aWR0aD0iNyIgaGVpZ2h0PSIxMCIgcng9IjIiLz48cmVjdCB4PSIxMDIiIHk9IjU2IiB3aWR0aD0iNyIgaGVpZ2h0PSIyNCIgcng9IjIiLz48L2c+Cjwvc3ZnPg==" width="26" height="26" alt="">PopSeqViz2</h1>
   <label class="fl" id="fl_tree">Tree…<input type="file" id="f_tree" accept=".nwk,.newick,.tree,.treefile,.tre,.nex,.nexus,.xml,.phyloxml,.txt,.contree"></label>
   <button id="b_paste" title="Paste Newick/NEXUS text">Paste</button>
   <label class="fl" id="fl_meta">Metadata…<input type="file" id="f_meta" accept=".csv,.tsv,.txt,.xlsx,.xls"></label>
   <label class="fl" id="fl_freq">Frequency table…<input type="file" id="f_freq" accept=".csv,.tsv,.txt,.xlsx,.xls"></label>
   <span class="sep"></span>
-  <label class="fl">Open session…<input type="file" id="f_sess" accept=".json,.treeviz"></label>
+  <label class="fl">Open session…<input type="file" id="f_sess" accept=".json,.treeviz,.popseqviz2"></label>
   <button id="b_save">Save session</button>
   <span class="sep"></span>
   <button id="b_help">Help</button>
 </div>
 <div id="body">
  <div id="side">
+  <div id="sidehead"><span class="muted">Options</span><span><button id="b_sideExp" title="Expand all sections">⊞</button><button id="b_sideCol" title="Collapse all sections">⊟</button><button id="b_sideHide" title="Hide side panel">«</button></span></div>
   <details open><summary>1. Layout</summary><div class="pb">
     <div class="row"><span class="lab">Tree mode</span><select id="o_layout" style="flex:1">
       <option value="rect">Rectangular</option><option value="slant">Slanted</option>
@@ -119,16 +133,18 @@ svg text{user-select:none}
     <div class="chk" id="c_dots"><span class="muted">load metadata first</span></div>
     <div class="row"><label title="Clone tips usually have no read-fraction values; this copies them from the population sample with the same Person, week and BodySite"><input type="checkbox" id="o_borrow" checked> tips with no value: borrow from matching population sample (same Person + week + BodySite)</label></div>
     <div class="note" id="metaWarn" style="color:#b45309"></div>
-    <div class="row"><span class="lab">Number colours</span><select id="o_grad" style="flex:1"><option value="viridis">Viridis</option><option value="plasma">Plasma</option><option value="blues">Blues</option><option value="reds">Reds</option><option value="greens">Greens</option><option value="rdylbu">Red–Yellow–Blue</option></select></div>
+    <div class="row"><span class="lab">Number colours</span><select id="o_grad" style="flex:1"><option value="viridis">Viridis</option><option value="turbo">Turbo (high contrast)</option><option value="orpu">Orange–Purple</option><option value="plasma">Plasma</option><option value="blues">Blues</option><option value="reds">Reds</option><option value="greens">Greens</option><option value="rdylbu">Blue–Green–Red</option></select></div>
     <div class="note">Number columns (e.g. Staphylococcus_aureus fraction) get a colour gradient. Change any column's type under the bottom tab “Columns &amp; colours”.</div>
   </div></details>
 
   <details open id="d_freq"><summary>4. Population frequencies</summary><div class="pb">
     <div class="note" id="freqNote">Load a population frequency table, then tick samples in the “Population samples” tab below.</div>
-    <div class="row"><span class="lab">Show as</span><select id="o_fmode" style="flex:1"><option value="bars">Bars per SNP position (PopSeqViz)</option><option value="values">Value badges on branches</option><option value="both">Both</option><option value="off">Hidden</option></select></div>
+    <div class="row"><span class="lab">Show as</span><select id="o_fmode" style="flex:1"><option value="bars">Bars: one bar per SNP site (PopSeqViz)</option><option value="hist">Histogram of site frequencies (10 bins)</option><option value="values">Value badges on branches</option><option value="both">Bars + badges</option><option value="off">Hidden</option></select></div>
+    <div class="row"><span class="lab">Place bars on</span><select id="o_anchor" style="flex:1"><option value="edge">branch where the SNPs arose (child_node)</option><option value="node">parent node (PopSeqViz style)</option></select></div>
+    <div class="note">Bars rule: 1 bar = 1 SNP site, height = derived-allele frequency 0–1. Histogram: several bars = how many sites fall in each frequency bin. Hover any bar for its numbers.</div>
     <div class="row"><span class="lab">Badge value</span><select id="o_fstat" style="flex:1"><option value="mean">mean</option><option value="median">median</option><option value="max">max</option><option value="n">n positions</option></select></div>
     <div class="row"><span class="lab">Colour branches by</span><select id="o_brSample" style="flex:1"></select></div>
-    <div class="row"><span class="lab">Frequency colours</span><select id="o_fgrad" style="flex:1"><option value="reds">Reds</option><option value="viridis">Viridis</option><option value="plasma">Plasma</option><option value="blues">Blues</option><option value="rdylbu">Red–Yellow–Blue</option></select></div>
+    <div class="row"><span class="lab">Frequency colours</span><select id="o_fgrad" style="flex:1"><option value="reds">Reds</option><option value="turbo">Turbo (high contrast)</option><option value="orpu">Orange–Purple</option><option value="greens">Greens</option><option value="viridis">Viridis</option><option value="plasma">Plasma</option><option value="blues">Blues</option><option value="rdylbu">Blue–Green–Red</option></select></div>
     <div class="row"><b>Filters</b></div>
     <div class="row"><label><input type="checkbox" id="o_shared"> only positions shared by all selected samples</label></div>
     <div class="row"><label><input type="checkbox" id="o_lofreq"> only positions with LoFreq support</label></div>
@@ -136,7 +152,7 @@ svg text{user-select:none}
     <div class="row"><span class="lab">True positions</span><select id="o_posMode"><option>All</option><option>Include</option><option>Exclude</option></select></div>
     <textarea id="o_posList" rows="2" placeholder="true_pos values, separated by comma/space/newline" style="display:none"></textarea>
     <div class="row"><span class="lab">Position order</span><select id="o_sort" style="flex:1"><option value="mean">mean frequency</option><option value="rel">relative position</option><option value="priority">sample priority (selection order)</option></select></div>
-    <div class="row"><span class="lab">Hide nodes</span></div>
+    <div class="row"><span class="lab">Hide nodes by</span><select id="o_hideBy" style="flex:1"><option value="node">parent node (node column)</option><option value="child">child node (child_node column = branch where SNPs arose)</option></select></div>
     <div class="chk" id="c_hideNodes"><span class="muted">–</span></div>
     <div class="row"><b>Bar geometry</b></div>
     <div class="row"><span class="lab">Sample row gap</span><input type="range" id="o_rowGap" min="6" max="60" value="16"></div>
@@ -153,8 +169,16 @@ svg text{user-select:none}
     <div class="row"><input type="text" id="e_rn" placeholder="rename tip / node label"><button id="e_rnb">Rename</button></div>
     <div class="row"><input type="text" id="e_cl" placeholder="clade label (bracket)"><button id="e_clb">Set</button></div>
     <div class="row"><span class="lab">Branch length</span><input type="number" id="e_bl" step="any"><button id="e_blb">Set</button></div>
-    <div class="row"><button class="p" id="e_rr">Reroot here</button><span>at</span><input type="number" id="e_rf" value="0.5" min="0" max="1" step="0.1"><span class="muted">of branch</span></div>
-    <div class="row"><button id="e_rmrca">Reroot at MRCA</button><button id="e_rmid">Midpoint root</button></div>
+    <fieldset style="border:1px solid #dfe3e8;border-radius:5px;padding:4px 6px;margin:0"><legend style="font-weight:600;padding:0 4px">Reroot</legend>
+    <div class="row"><select id="e_rmode" style="flex:1">
+      <option value="here">on selected branch</option>
+      <option value="mrca">at common ancestor (MRCA) of selected tips</option>
+      <option value="out">outgroup: tips whose name contains…</option>
+      <option value="mid">midpoint (longest tip-to-tip path)</option></select></div>
+    <div class="row" id="e_rr_frac"><span>position on branch</span><input type="number" id="e_rf" value="0.5" min="0" max="1" step="0.1"><span class="note">0 = child end, 1 = parent end</span></div>
+    <div class="row" id="e_rr_out" style="display:none"><input type="text" id="e_rout" placeholder="e.g. GCF_000237265 or /regex/"></div>
+    <div class="row"><button class="p" id="e_rr">Reroot</button><span class="note" id="e_rr_hint">Click a branch first.</span></div>
+    </fieldset>
     <div class="row"><button id="e_col">Collapse/expand</button><button id="e_flip">Flip</button><button id="e_mirror">Mirror</button></div>
     <div class="row"><button class="d" id="e_prune">Prune</button><button id="e_keep">Keep only</button><button id="e_sub">Subtree as root</button></div>
     <div class="row"><button id="e_selclade">Select clade</button><button id="e_seltips">Select tips</button><button id="e_clear">Clear</button></div>
