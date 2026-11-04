@@ -24,7 +24,7 @@ PopSeqViz2 (formerly TreeViz) is an interactive phylogenetic tree viewer and edi
   - **Display:** per-position frequency bars on each named branch, value badges, or branches coloured by frequency.
   - **Bar placement:** on the branch where the SNPs arose (`child_node`) or on the parent node (PopSeqViz style); histogram mode for many sites.
   - **Filters:** shared positions, LoFreq support, minimum depth, minimum frequency, include/exclude positions, and hide nodes by parent node or by child node.
-  - **Homoplastic sites** (`site_class = homoplastic` in the table) get a red outline; hovering shows the site class, number of changes and PAUP placement note.
+  - **Homoplastic sites** (`site_class = homoplastic` in the table) get a red outline; hovering shows the site class, number of changes and PAUP placement note. A “hide homoplastic sites” filter removes them.
   - **No-data sites:** a site with no reads in a sample (so no row in the table) is drawn as a grey hatched box, which is not the same as 0%.
   - **Sample QC:** the sample list shows ⚠ when the *S. aureus* share or depth is below adjustable cut-offs (default 5% and 10×), or when some SNP sites have no reads; bar labels for those samples start with ⚠.
   - **Sample table:** one-line filter bar (Person / week / BodySite / type dropdowns + search) that can be minimised after choosing; click a sample name to show just that sample.
