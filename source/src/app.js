@@ -41,7 +41,7 @@ const S={root:null,sel:new Set(),undo:[],redo:[],edits:0,byId:{},zoom:1,fitPendi
     showTips:true,align:false,nodeDots:false,nodeLabels:false,brLen:false,scaleBar:true,sup:false,supMin:0,legend:true,
     fs:12,tipOff:6,nlx:0,nly:-4,blx:0,bly:-4,blDec:4,
     labelCols:["__name"],cby:"",clab:true,dots:[],dotShape:"circle",dotSize:11,grad:"viridis",
-    fmode:"bars",anchor:"edge",fstat:"mean",brSample:"",fgrad:"reds",shared:false,lofreq:false,minDepth:0,minFreq:0,posMode:"All",posList:"",sort:"mean",hideNodes:[],hideBy:"node",noData:true,qcSa:0.05,qcDepth:10,
+    fmode:"bars",anchor:"edge",fstat:"mean",brSample:"",fgrad:"reds",shared:false,lofreq:false,minDepth:0,minFreq:0,posMode:"All",posList:"",sort:"mean",hideNodes:[],hideBy:"node",noData:true,hideHomo:false,qcSa:0.05,qcDepth:10,
     rowGap:16,barGap:6,barW:4.5,barH:13,barShift:0,rangeW:90,barLabels:true,
     wideCols:[],wideMode:"stack",wideNorm:true,wideW:140}};
 
@@ -257,7 +257,7 @@ function filteredFreq(keyFn){
     const byChild=o.hideBy==="child";
     for(const[node,rows]of m){if(!byChild&&hidden.has(node))continue;
       const keep=rows.filter(r=>{if(byChild&&hidden.has(r.child||r.node))return false;
-        if(r.type==="site"){if(!isFinite(r.freq))return false;
+        if(r.type==="site"){if(!isFinite(r.freq))return false;if(o.hideHomo&&r.cls==="homoplastic")return false;
           if(pos.size&&o.posMode==="Include"&&!pos.has(r.pos))return false;
           if(pos.size&&o.posMode==="Exclude"&&pos.has(r.pos))return false;
           if(o.minDepth>0&&!(r.depth>=o.minDepth))return false;
@@ -447,7 +447,7 @@ function render(){
     const wantBars=(o.fmode==="bars"||o.fmode==="both"||wantHist)&&rectish,wantVals=o.fmode==="values"||o.fmode==="both"||!rectish;
     const nd=o.noData&&wantBars&&!wantHist,bSites=new Map();
     if(nd&&S.freq){const hidden=new Set(o.hideNodes),pl=parsePosList(o.posList);
-      for(const r of S.freq){if(r.type!=="site")continue;if(hidden.has(o.hideBy==="child"?(r.child||r.node):r.node))continue;
+      for(const r of S.freq){if(r.type!=="site")continue;if(o.hideHomo&&r.cls==="homoplastic")continue;if(hidden.has(o.hideBy==="child"?(r.child||r.node):r.node))continue;
         if(pl.size&&o.posMode==="Include"&&!pl.has(r.pos))continue;if(pl.size&&o.posMode==="Exclude"&&pl.has(r.pos))continue;
         const k=anchorKey(r);let mm=bSites.get(k);if(!mm)bSites.set(k,mm=new Map());if(!mm.has(r.pos))mm.set(r.pos,r.rel)}
       for(const k of bSites.keys())if(!ff.has(k))ff.set(k,new Map())}
@@ -651,7 +651,7 @@ on("s_rep",mm(false));on("s_add",mm(true));
 /* ---------------------------------------------------------------- option binding */
 const OPT_IDS={layout:"s",scale:"s",xform:"s",cap:"n",boost:"n",treeW:"n",rowH:"n",arc:"n",rot:"n",innerR:"n",lw:"n",showTips:"b",align:"b",nodeDots:"b",nodeLabels:"b",brLen:"b",scaleBar:"b",sup:"b",supMin:"n",legend:"b",
   fs:"n",tipOff:"n",nlx:"n",nly:"n",blx:"n",bly:"n",blDec:"n",cby:"s",clab:"b",dotShape:"s",dotSize:"n",grad:"s",fmode:"s",anchor:"s",fstat:"s",brSample:"s",fgrad:"s",shared:"b",lofreq:"b",minDepth:"n",minFreq:"n",posMode:"s",posList:"s",sort:"s",
-  rowGap:"n",barGap:"n",barW:"n",barH:"n",barShift:"n",rangeW:"n",barLabels:"b",hideBy:"s",noData:"b",qcSa:"n",qcDepth:"n",tipKey:"K",sampleKey:"K",borrow:"b"};
+  rowGap:"n",barGap:"n",barW:"n",barH:"n",barShift:"n",rangeW:"n",barLabels:"b",hideBy:"s",noData:"b",hideHomo:"b",qcSa:"n",qcDepth:"n",tipKey:"K",sampleKey:"K",borrow:"b"};
 let rT=0;function rerender(fit){if(fit)S.fitPending=true;cancelAnimationFrame(rT);rT=requestAnimationFrame(()=>{render();updInfo()})}
 Object.entries(OPT_IDS).forEach(([k,t])=>{const el=$("o_"+k);if(!el)return;
   const h=()=>{if(t==="K"){S[k]=el.value;if(k==="tipKey")S.mTip=buildIndex(el.value);else S.mSample=buildIndex(el.value);buildBorrow();renderTab();rerender();return}
@@ -689,8 +689,9 @@ function refreshFreqControls(){
     :S.wide?`Per-tip value table loaded (${S.wide.columns.length} columns). Pick columns in the <b>Columns &amp; colours</b> tab.`:"Load a population frequency table, then tick samples in the “Population samples” tab below."}
 
 /* ---------------------------------------------------------------- bottom drawer tabs */
-document.querySelectorAll("#tabs button[data-tab]").forEach(b=>b.addEventListener("click",()=>{S.tab=b.dataset.tab;document.querySelectorAll("#tabs button[data-tab]").forEach(x=>x.classList.toggle("on",x===b));$("drawer").classList.remove("min");renderTab()}));
-on("b_drawer",()=>{$("drawer").classList.toggle("min");$("b_drawer").textContent=$("drawer").classList.contains("min")?"▴":"▾"});
+document.querySelectorAll("#tabs button[data-tab]").forEach(b=>b.addEventListener("click",()=>{S.tab=b.dataset.tab;document.querySelectorAll("#tabs button[data-tab]").forEach(x=>x.classList.toggle("on",x===b));$("drawer").classList.remove("min");drawerBtn();renderTab()}));
+function drawerBtn(){const m=$("drawer").classList.contains("min");$("b_drawer").textContent=m?"▴ Show":"▾ Hide"}
+on("b_drawer",()=>{$("drawer").classList.toggle("min");drawerBtn();rerender()});
 function cellStyle(c,v){const t=colType(c);if((t==="grad"||t==="glog")&&!isNA(v)){const col=colourFor(c,v);if(col)return` style="background:${col};color:${textOn(col)}"`}return""}
 function sampleRows(){return S.freqSamples.map(s=>({s,m:metaOfSample(s)}))}
 function filterCols(){return S.meta.columns.filter(c=>["person","week","bodysite","site","type","sampletype"].includes(normCol(c)))}
@@ -853,7 +854,7 @@ function alertBox(){const h=`<b>PopSeqViz2 – quick help</b><br><br>
 <b>Editing</b>: click a branch/tip/node; Ctrl/Shift-click for multi-select; double-click to collapse; Delete = prune; Ctrl+Z / Ctrl+Y = undo / redo; Ctrl + mouse wheel = zoom.<br>
 <b>Numbers</b>: number columns get colour gradients (switch to log scale for read fractions) in “Columns &amp; colours”.<br>
 <b>Save session</b> stores tree edits, data and all settings in one .json file you can reopen later.`;
-  $("tabbody").innerHTML=`<div style="max-width:900px;line-height:1.5">${h}</div>`;$("drawer").classList.remove("min")}
+  $("tabbody").innerHTML=`<div style="max-width:900px;line-height:1.5">${h}</div>`;$("drawer").classList.remove("min");drawerBtn()}
 window.addEventListener("resize",()=>{});
 document.addEventListener("click",()=>{if(S.openDD){S.openDD=null;document.querySelectorAll(".dd.open").forEach(d=>d.classList.remove("open"))}});
 function setSide(show){$("side").classList.toggle("hid",!show);$("vsplit").classList.toggle("hid",!show);$("b_side").classList.toggle("p",!show);try{localStorage.setItem("psv2_sideHidden",show?"0":"1")}catch(e){}rerender()}
@@ -869,7 +870,7 @@ window.TV={S,render,setTree,setMeta,setFreq,readTreeText,parseTable,toNewick,fil
 (function(){const side=$("side"),dr=$("drawer");
   function drag(el,onMove){el.addEventListener("mousedown",e=>{e.preventDefault();document.body.style.userSelect="none";const mv=ev=>onMove(ev),up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);document.body.style.userSelect=""};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up)})}
   drag($("vsplit"),e=>{const w=Math.max(200,Math.min(innerWidth*.6,e.clientX));side.style.width=side.style.minWidth=w+"px"});
-  drag($("hsplit"),e=>{const h=Math.max(32,Math.min(innerHeight-150,innerHeight-e.clientY));dr.style.height=h+"px";dr.classList.remove("min")});
+  drag($("hsplit"),e=>{const h=Math.max(32,Math.min(innerHeight-150,innerHeight-e.clientY));dr.style.height=h+"px";dr.classList.remove("min");drawerBtn()});
   try{const w=localStorage.getItem("tv_side");if(w)side.style.width=side.style.minWidth=w}catch(e){}
   addEventListener("beforeunload",()=>{try{localStorage.setItem("tv_side",side.style.width)}catch(e){}})})();
 ["treeW","rowH"].forEach(k=>{const n=$("o_"+k+"_n"),r=$("o_"+k);
